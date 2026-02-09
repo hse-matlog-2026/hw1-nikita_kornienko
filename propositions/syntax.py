@@ -91,6 +91,9 @@ class Formula:
             second: the second operand for the root, if the root is a binary
                 operator.
         """
+        self.first = first
+        self.second = second
+
         if is_variable(root) or is_constant(root):
             assert first is None and second is None
             self.root = root
@@ -109,6 +112,11 @@ class Formula:
         Returns:
             The standard string representation of the current formula.
         """
+        if is_variable(self.root) or is_constant(self.root):
+            return self.root
+        if is_unary(self.root):
+            return self.root + str(self.first)
+        return "(" + str(self.first) + self.root + str(self.second) + ")"
         # Task 1.1
 
     def __eq__(self, other: object) -> bool:
@@ -145,6 +153,14 @@ class Formula:
         Returns:
             A set of all variable names used in the current formula.
         """
+        vars_set = set()
+        if is_variable(self.root):
+            vars_set.add(self.root)
+        if self.first is not None:
+            vars_set.update(self.first.variables())
+        if self.second is not None:
+            vars_set.update(self.second.variables())
+        return vars_set
         # Task 1.2
 
     @memoized_parameterless_method
@@ -155,6 +171,14 @@ class Formula:
             A set of all operators (including ``'T'`` and ``'F'``) used in the
             current formula.
         """
+        ops_set = set()
+        if is_constant(self.root) or is_unary(self.root) or is_binary(self.root):
+            ops_set.add(self.root)
+        if self.first is not None:
+            ops_set.update(self.first.operators())
+        if self.second is not None:
+            ops_set.update(self.second.operators())
+        return ops_set
         # Task 1.3
         
     @staticmethod
@@ -174,6 +198,47 @@ class Formula:
             should be of ``None`` and an error message, where the error message
             is a string with some human-readable content.
         """
+        if not string:
+            return None, "Empty string"
+
+        if is_constant(string[0]):
+            return Formula(string[0]), string[1:]
+
+        if 'p' <= string[0] <= 'z':
+            i = 1
+            while i < len(string) and string[i].isdigit():
+                i += 1
+            return Formula(string[:i]), string[i:]
+
+        if is_unary(string[0]):
+            f, suffix = Formula._parse_prefix(string[1:])
+            if f is None:
+                return None, suffix
+            return Formula(string[0], f), suffix
+
+        if string[0] == '(':
+            first, suffix = Formula._parse_prefix(string[1:])
+            if first is None:
+                return None, suffix
+
+            op = None
+            for possible_op in ['<->', '-&', '-|', '->', '&', '|', '+']:
+                if suffix.startswith(possible_op):
+                    op = possible_op
+                    break
+
+            if op is None:
+                return None, "Invalid operator"
+
+            second, suffix = Formula._parse_prefix(suffix[len(op):])
+            if second is None:
+                return None, suffix
+
+            if not suffix.startswith(')'):
+                return None, "Missing closing parenthesis"
+            return Formula(op, first, second), suffix[1:]
+
+        return None, "Invalid starting character"
         # Task 1.4
 
     @staticmethod
@@ -187,6 +252,8 @@ class Formula:
             ``True`` if the given string is a valid standard string
             representation of a formula, ``False`` otherwise.
         """
+        f, s = Formula._parse_prefix(string)
+        return f is not None and s == ""
         # Task 1.5
         
     @staticmethod
@@ -200,6 +267,7 @@ class Formula:
             A formula whose standard string representation is the given string.
         """
         assert Formula.is_formula(string)
+        return Formula._parse_prefix(string)[0]
         # Task 1.6
 
     def polish(self) -> str:
@@ -208,6 +276,11 @@ class Formula:
         Returns:
             The polish notation representation of the current formula.
         """
+        if is_constant(self.root) or is_variable(self.root):
+            return self.root
+        if is_unary(self.root):
+            return self.root + self.first.polish()
+        return self.root + self.first.polish() + self.second.polish()
         # Optional Task 1.7
 
     @staticmethod
@@ -220,6 +293,37 @@ class Formula:
         Returns:
             A formula whose polish notation representation is the given string.
         """
+
+        def _parse_polish_prefix(s):
+            if not s:
+                return None
+            if is_constant(s[0]):
+                return Formula(s[0]), s[1:]
+            if 'p' <= s[0] <= 'z':
+                i = 1
+                while i < len(s) and s[i].isdigit():
+                    i += 1
+                return Formula(s[:i]), s[i:]
+            if is_unary(s[0]):
+                f, rem = _parse_polish_prefix(s[1:])
+                return Formula(s[0], f), rem
+
+            op = None
+            rem_s = s
+            for possible_op in ['<->', '-&', '-|', '->', '&', '|', '+']:
+                if s.startswith(possible_op):
+                    op = possible_op
+                    rem_s = s[len(op):]
+                    break
+
+            if op:
+                f1, rem1 = _parse_polish_prefix(rem_s)
+                f2, rem2 = _parse_polish_prefix(rem1)
+                return Formula(op, f1, f2), rem2
+            return None
+
+        f, rem = _parse_polish_prefix(string)
+        return f
         # Optional Task 1.8
 
     def substitute_variables(self, substitution_map: Mapping[str, Formula]) -> \
